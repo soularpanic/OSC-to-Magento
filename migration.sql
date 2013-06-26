@@ -1,5 +1,6 @@
 /* Clear out existing customer data */
 set sql_safe_updates=0;
+truncate mag_restore_1.customer_address_entity_text;
 truncate mag_restore_1.customer_address_entity_varchar;
 truncate mag_restore_1.customer_address_entity;
 truncate mag_restore_1.customer_entity_varchar;
