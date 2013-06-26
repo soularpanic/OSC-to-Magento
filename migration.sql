@@ -1,5 +1,6 @@
 /* Clear out existing customer data */
 set sql_safe_updates=0;
+truncate mag_restore_1.customer_address_entity_int;
 truncate mag_restore_1.customer_address_entity_text;
 truncate mag_restore_1.customer_address_entity_varchar;
 truncate mag_restore_1.customer_address_entity;
@@ -45,10 +46,15 @@ create temporary table osc_customer_addresses as (
 			ab.entry_street_address,
 			ab.entry_suburb,
 			ab.entry_postcode,
-			ab.entry_city
+			ab.entry_city,
+			z.zone_name,
+			z.zone_id,
+			c.customers_telephone
 	from theretrofitsource_osc22.address_book as ab
 		join theretrofitsource_osc22.customers as c
-		where ab.customers_id = c.customers_id);
+		on ab.customers_id = c.customers_id
+		join theretrofitsource_osc22.zones as z
+		on ab.entry_zone_id = z.zone_id);
 
 /* Migrate customer address core data */
 insert into mag_restore_1.customer_address_entity (
@@ -106,16 +112,39 @@ insert into mag_restore_1.customer_address_entity_varchar (
 	select entry_city, 26, address_book_id, 2
 	from osc_customer_addresses;
 
-/* Migrate customer telephone number */
-/*
+/* Address - Zone/State */
 insert into mag_restore_1.customer_address_entity_varchar (
-		entity_id,
-		value, 
+		value,
 		attribute_id,
+		entity_id,
 		entity_type_id)
-	select cae.entity_id, c.customers_telephone, 31, 2
-	from theretrofitsource_osc22.customers as c
-		join mag_restore_1.customer_address_entity as cae
-		where c.customers_id = cae.parent_id;
-*/
+	select zone_name, 28, address_book_id, 2
+	from osc_customer_addresses;
 
+/* Address - US State Dropdown */
+insert into mag_restore_1.customer_address_entity_int (
+		value,
+		attribute_id,
+		entity_id,
+		entity_type_id)
+	select zone_id, 29, address_book_id, 2
+	from osc_customer_addresses
+	where zone_id <= 65;
+
+/* Address - Zip Code */
+insert into mag_restore_1.customer_address_entity_varchar (
+		value,
+		attribute_id,
+		entity_id,
+		entity_type_id)
+	select entry_postcode, 30, address_book_id, 2
+	from osc_customer_addresses;
+
+/* Address - Telephone number */
+insert into mag_restore_1.customer_address_entity_varchar (
+		value,
+		attribute_id,
+		entity_id,
+		entity_type_id)
+	select customers_telephone, 31, address_book_id, 2
+	from osc_customer_addresses;
