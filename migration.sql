@@ -1,12 +1,13 @@
 /* Clear out existing customer data */
-set sql_safe_updates=0;
+set sql_safe_updates = 0;
 truncate mag_restore_1.customer_address_entity_int;
 truncate mag_restore_1.customer_address_entity_text;
 truncate mag_restore_1.customer_address_entity_varchar;
 truncate mag_restore_1.customer_address_entity;
+truncate mag_restore_1.customer_entity_int;
 truncate mag_restore_1.customer_entity_varchar;
 truncate mag_restore_1.customer_entity;
-set sql_safe_updates=1;
+set sql_safe_updates = 1;
 
 drop temporary table if exists osc_customer_addresses;
 
@@ -40,6 +41,7 @@ insert into mag_restore_1.customer_entity_varchar (
 create temporary table osc_customer_addresses as (
 	select ab.address_book_id,
 			c.customers_id,
+			c.customers_default_address_id,
 			ab.entry_company,
 			ab.entry_firstname,
 			ab.entry_lastname,
@@ -49,12 +51,15 @@ create temporary table osc_customer_addresses as (
 			ab.entry_city,
 			z.zone_name,
 			z.zone_id,
+			cn.countries_iso_code_2 as country_code,
 			c.customers_telephone
 	from theretrofitsource_osc22.address_book as ab
 		join theretrofitsource_osc22.customers as c
-		on ab.customers_id = c.customers_id
+			on ab.customers_id = c.customers_id
 		join theretrofitsource_osc22.zones as z
-		on ab.entry_zone_id = z.zone_id);
+			on ab.entry_zone_id = z.zone_id
+		join theretrofitsource_osc22.countries as cn
+			on ab.entry_country_id = cn.countries_id);
 
 /* Migrate customer address core data */
 insert into mag_restore_1.customer_address_entity (
@@ -121,7 +126,16 @@ insert into mag_restore_1.customer_address_entity_varchar (
 	select zone_name, 28, address_book_id, 2
 	from osc_customer_addresses;
 
-/* Address - US State Dropdown */
+/* Address - Country */
+insert into mag_restore_1.customer_address_entity_varchar (
+		value,
+		attribute_id,
+		entity_id,
+		entity_type_id)
+	select country_code, 27, address_book_id, 2
+	from osc_customer_addresses;
+
+/* Address - US, Canada State Dropdown */
 insert into mag_restore_1.customer_address_entity_int (
 		value,
 		attribute_id,
@@ -129,7 +143,7 @@ insert into mag_restore_1.customer_address_entity_int (
 		entity_type_id)
 	select zone_id, 29, address_book_id, 2
 	from osc_customer_addresses
-	where zone_id <= 65;
+	where zone_id <= 78;
 
 /* Address - Zip Code */
 insert into mag_restore_1.customer_address_entity_varchar (
@@ -147,4 +161,21 @@ insert into mag_restore_1.customer_address_entity_varchar (
 		entity_id,
 		entity_type_id)
 	select customers_telephone, 31, address_book_id, 2
+	from osc_customer_addresses;
+
+/* Associate customers' default addresses */
+insert into mag_restore_1.customer_entity_int (
+		value,
+		attribute_id,
+		entity_id,
+		entity_type_id)
+	select distinct customers_default_address_id, 13, customers_id, 1
+	from osc_customer_addresses;
+
+insert into mag_restore_1.customer_entity_int (
+		value,
+		attribute_id,
+		entity_id,
+		entity_type_id)
+	select distinct customers_default_address_id, 14, customers_id, 1
 	from osc_customer_addresses;
