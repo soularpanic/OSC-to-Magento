@@ -316,12 +316,26 @@ create temporary table osc_orders as (
 		c.customers_lastname,
 		c.customers_email_address as customers_email,
 		o.delivery_name,
-		o.billing_name
+		o.billing_name,
+		o_total.value as order_total,
+		o_shipping.value as order_shipping,
+		o_subtotal.value as order_subtotal,
+		o_discount.value as order_discount
 	from theretrofitsource_osc22.orders as o
 		join osc_to_magento_order_status as os
 			on o.orders_status = os.osc_status_id
 		join theretrofitsource_osc22.customers as c
-			on c.customers_id = o.customers_id);
+			on c.customers_id = o.customers_id
+		left join theretrofitsource_osc22.orders_total as o_total
+			on (o.orders_id = o_total.orders_id and o_total.class = 'ot_total')
+		left join theretrofitsource_osc22.orders_total as o_shipping
+			on (o.orders_id = o_shipping.orders_id and o_shipping.class = 'ot_shipping')
+		left join theretrofitsource_osc22.orders_total as o_subtotal
+			on (o.orders_id = o_subtotal.orders_id and o_subtotal.class = 'ot_subtotal')
+		left join theretrofitsource_osc22.orders_total as o_discount
+			on (o.orders_id = o_discount.orders_id and o_discount.class = 'ot_discount_coupon'));
+/* ot_tax, ot_refund, ot_insurance, ot_signature */
+
 /*
 create temporary table osc_products as (
 	select p.products_id,
