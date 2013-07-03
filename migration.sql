@@ -4,6 +4,7 @@ set @magento_store_id = 1;
 /* Clear out existing customer data */
 set sql_safe_updates = 0;
 truncate mag_restore_1.sales_flat_order;
+truncate mag_restore_1.sales_flat_order_payment;
 truncate mag_restore_1.sales_flat_order_grid;
 delete from mag_restore_1.eav_attribute_set 
 	where attribute_set_name = @legacy_product_category_name;
@@ -317,15 +318,23 @@ create temporary table osc_orders as (
 		c.customers_email_address as customers_email,
 		o.delivery_name,
 		o.billing_name,
+		o.currency as currency_code,
+		o.currency_value,
 		o_total.value as order_total,
-		o_shipping.value as order_shipping,
+		o_shipping.value as order_shipping_cost,
+		o_shipping.title as order_shipping_carrier,
 		o_subtotal.value as order_subtotal,
-		o_discount.value as order_discount
+		o_discount.value as order_discount,
+		o_discount.title as order_discount_detail,
+		o_tax.value as order_tax,
+		o_refund.value as order_refund,
+		o_insurance.value as order_insurance,
+		o_signature.value as order_signature
 	from theretrofitsource_osc22.orders as o
 		join osc_to_magento_order_status as os
 			on o.orders_status = os.osc_status_id
 		join theretrofitsource_osc22.customers as c
-			on c.customers_id = o.customers_id
+			on o.customers_id = c.customers_id
 		left join theretrofitsource_osc22.orders_total as o_total
 			on (o.orders_id = o_total.orders_id and o_total.class = 'ot_total')
 		left join theretrofitsource_osc22.orders_total as o_shipping
@@ -333,19 +342,16 @@ create temporary table osc_orders as (
 		left join theretrofitsource_osc22.orders_total as o_subtotal
 			on (o.orders_id = o_subtotal.orders_id and o_subtotal.class = 'ot_subtotal')
 		left join theretrofitsource_osc22.orders_total as o_discount
-			on (o.orders_id = o_discount.orders_id and o_discount.class = 'ot_discount_coupon'));
-/* ot_tax, ot_refund, ot_insurance, ot_signature */
+			on (o.orders_id = o_discount.orders_id and o_discount.class = 'ot_discount_coupon')
+		left join theretrofitsource_osc22.orders_total as o_tax
+			on (o.orders_id = o_tax.orders_id and o_tax.class = 'ot_tax')
+		left join theretrofitsource_osc22.orders_total as o_refund
+			on (o.orders_id = o_refund.orders_id and o_refund.class = 'ot_refund')
+		left join theretrofitsource_osc22.orders_total as o_insurance
+			on (o.orders_id = o_insurance.orders_id and o_insurance.class = 'ot_insurance')
+		left join theretrofitsource_osc22.orders_total as o_signature
+			on (o.orders_id = o_signature.orders_id and o_signature.class = 'ot_signature'));
 
-/*
-create temporary table osc_products as (
-	select p.products_id,
-			p.products_model,
-			pd.products_name,
-			p.products_price
-	from theretrofitsource_osc22.products as p
-		join theretrofitsource_osc22.products_description as pd
-			on p.products_id = pd.products_id);
-*/
 insert into mag_restore_1.sales_flat_order (
 		entity_id,
 		increment_id,
@@ -356,7 +362,25 @@ insert into mag_restore_1.sales_flat_order (
 		customer_id,
 		customer_firstname,
 		customer_lastname,
-		customer_email)
+		customer_email,
+		base_currency_code,
+		global_currency_code,
+		order_currency_code,
+		store_currency_code,
+		base_grand_total,
+		grand_total,
+		base_subtotal,
+		subtotal,
+		base_shipping_amount,
+		shipping_amount,
+		base_shipping_tax_amount,
+		shipping_tax_amount,
+		base_tax_amount,
+		tax_amount,
+		base_discount_amount,
+		discount_amount,
+		base_total_refunded,
+		total_refunded)
 	select orders_id,
 		orders_id,
 		orders_status,
@@ -366,7 +390,25 @@ insert into mag_restore_1.sales_flat_order (
 		customers_id,
 		customers_firstname,
 		customers_lastname,
-		customers_email
+		customers_email,
+		currency_code,
+		currency_code,
+		currency_code,
+		currency_code,
+		order_total,
+		order_total,
+		order_subtotal,
+		order_subtotal,
+		order_shipping_cost,
+		order_shipping_cost + ifnull(order_insurance, 0.0) + ifnull(order_signature, 0.0),
+		0.0,
+		0.0,
+		order_tax,
+		order_tax,
+		order_discount,
+		order_discount,
+		order_refund,
+		order_refund
 	from osc_orders;
 
 insert into mag_restore_1.sales_flat_order_grid (
@@ -378,7 +420,11 @@ insert into mag_restore_1.sales_flat_order_grid (
 		updated_at,
 		customer_id,
 		shipping_name,
-		billing_name)
+		billing_name,
+		base_currency_code,
+		order_currency_code,
+		base_grand_total,
+		grand_total)
 	select orders_id,
 		orders_id,
 		orders_status,
@@ -387,5 +433,22 @@ insert into mag_restore_1.sales_flat_order_grid (
 		last_modified,
 		customers_id,
 		delivery_name,
-		billing_name
+		billing_name,
+		currency_code,
+		currency_code,
+		order_total,
+		order_total
+	from osc_orders;
+
+insert into mag_restore_1.sales_flat_order_payment (
+		parent_id,
+		base_amount_ordered,
+		amount_ordered,
+		base_shipping_amount,
+		shipping_amount)
+	select orders_id,
+		order_total,
+		order_total,
+		order_shipping_cost,
+		order_shipping_cost + ifnull(order_insurance, 0.0) + ifnull(order_signature, 0.0)
 	from osc_orders;
