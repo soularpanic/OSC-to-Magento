@@ -295,6 +295,8 @@ insert into mag_restore_1.catalog_product_entity_int (
 /**********
  * ORDERS
  **********/
+
+/* Artisan, hand-crafted mapping between OSC and Magento statuses. */
 create temporary table osc_to_magento_order_status (
 	osc_status_id int,
 	status varchar(32));
@@ -373,6 +375,7 @@ create temporary table osc_orders as (
 		left join theretrofitsource_osc22.orders_total as o_signature
 			on (o.orders_id = o_signature.orders_id and o_signature.class = 'ot_signature'));
 
+/* Migrate order core details */
 insert into mag_restore_1.sales_flat_order (
 		entity_id,
 		increment_id,
@@ -434,6 +437,7 @@ insert into mag_restore_1.sales_flat_order (
 		order_refund
 	from osc_orders;
 
+/* Migrate order summary details */
 insert into mag_restore_1.sales_flat_order_grid (
 		entity_id,
 		increment_id,
@@ -463,6 +467,7 @@ insert into mag_restore_1.sales_flat_order_grid (
 		order_total
 	from osc_orders;
 
+/* Migrate order payment details */
 insert into mag_restore_1.sales_flat_order_payment (
 		parent_id,
 		base_amount_ordered,
@@ -478,9 +483,7 @@ insert into mag_restore_1.sales_flat_order_payment (
 		'checkmo' /* TODO - fix this! */
 	from osc_orders;
 
-/*********************
- * Shipping Addresses
- *********************/
+/* Migrate order shipping addresses */
 insert into mag_restore_1.sales_flat_order_address (
 		lastname,
 		company,
@@ -504,9 +507,7 @@ insert into mag_restore_1.sales_flat_order_address (
 		'shipping'
 	from osc_orders;
 
-/*********************
- * Billing Addresses
- *********************/
+/* Migrate order billing addresses */
 insert into mag_restore_1.sales_flat_order_address (
 		lastname,
 		company,
