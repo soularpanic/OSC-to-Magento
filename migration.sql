@@ -3,6 +3,7 @@ set @magento_store_id = 1;
 
 /* Clear out existing customer data */
 set sql_safe_updates = 0;
+truncate mag_restore_1.sales_flat_order_address;
 truncate mag_restore_1.sales_flat_order;
 truncate mag_restore_1.sales_flat_order_payment;
 truncate mag_restore_1.sales_flat_order_grid;
@@ -316,8 +317,24 @@ create temporary table osc_orders as (
 		c.customers_firstname,
 		c.customers_lastname,
 		c.customers_email_address as customers_email,
+		o.customers_telephone,
 		o.delivery_name,
+		o.delivery_company,
+		o.delivery_street_address,
+		o.delivery_suburb,
+		o.delivery_city,
+		o.delivery_postcode,
+		o.delivery_state,
+		o.delivery_country,
 		o.billing_name,
+		o.billing_company,
+		o.billing_street_address,
+		o.billing_suburb,
+		o.billing_city,
+		o.billing_postcode,
+		o.billing_state,
+		o.billing_country,
+		o_count.product_count,
 		o.currency as currency_code,
 		o.currency_value,
 		o_total.value as order_total,
@@ -335,6 +352,10 @@ create temporary table osc_orders as (
 			on o.orders_status = os.osc_status_id
 		join theretrofitsource_osc22.customers as c
 			on o.customers_id = c.customers_id
+		join (select orders_id, count(*) as product_count 
+				from theretrofitsource_osc22.orders_products
+				group by orders_id) as o_count
+			on o.orders_id = o_count.orders_id
 		left join theretrofitsource_osc22.orders_total as o_total
 			on (o.orders_id = o_total.orders_id and o_total.class = 'ot_total')
 		left join theretrofitsource_osc22.orders_total as o_shipping
@@ -363,6 +384,7 @@ insert into mag_restore_1.sales_flat_order (
 		customer_firstname,
 		customer_lastname,
 		customer_email,
+		total_item_count,
 		base_currency_code,
 		global_currency_code,
 		order_currency_code,
@@ -391,6 +413,7 @@ insert into mag_restore_1.sales_flat_order (
 		customers_firstname,
 		customers_lastname,
 		customers_email,
+		product_count,
 		currency_code,
 		currency_code,
 		currency_code,
@@ -445,10 +468,64 @@ insert into mag_restore_1.sales_flat_order_payment (
 		base_amount_ordered,
 		amount_ordered,
 		base_shipping_amount,
-		shipping_amount)
+		shipping_amount,
+		method)
 	select orders_id,
 		order_total,
 		order_total,
 		order_shipping_cost,
-		order_shipping_cost + ifnull(order_insurance, 0.0) + ifnull(order_signature, 0.0)
+		order_shipping_cost + ifnull(order_insurance, 0.0) + ifnull(order_signature, 0.0),
+		'checkmo' /* TODO - fix this! */
+	from osc_orders;
+
+/*********************
+ * Shipping Addresses
+ *********************/
+insert into mag_restore_1.sales_flat_order_address (
+		lastname,
+		company,
+		street,
+		city,
+		postcode,
+		region,
+		email,
+		telephone,
+		parent_id,
+		address_type)
+	select delivery_name,
+		delivery_company,
+		delivery_street_address,
+		delivery_city,
+		delivery_postcode,
+		delivery_state,
+		customers_email,
+		customers_telephone,
+		orders_id,
+		'shipping'
+	from osc_orders;
+
+/*********************
+ * Billing Addresses
+ *********************/
+insert into mag_restore_1.sales_flat_order_address (
+		lastname,
+		company,
+		street,
+		city,
+		postcode,
+		region,
+		email,
+		telephone,
+		parent_id,
+		address_type)
+	select billing_name,
+		billing_company,
+		billing_street_address,
+		billing_city,
+		billing_postcode,
+		billing_state,
+		customers_email,
+		customers_telephone,
+		orders_id,
+		'billing'
 	from osc_orders;
