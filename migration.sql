@@ -18,7 +18,10 @@ truncate mag_restore_1.customer_entity_varchar;
 truncate mag_restore_1.customer_entity;
 set sql_safe_updates = 1;
 
+drop temporary table if exists osc_to_magento_cc_type_map;
+drop temporary table if exists osc_to_magento_payment_map;
 drop temporary table if exists osc_to_magento_order_status;
+drop temporary table if exists osc_order_history;
 drop temporary table if exists osc_orders;
 drop temporary table if exists osc_customer_addresses;
 drop temporary table if exists osc_products;
@@ -252,6 +255,8 @@ insert into mag_restore_1.catalog_product_entity (
 	select products_id, products_model, 4, @legacy_attr_set_id, 'simple'
 	from osc_products;
 
+/* TODO - Why are these store ids 0 when the others are 1? */
+
 /* Migrate product name */
 insert into mag_restore_1.catalog_product_entity_varchar (
 		value,
@@ -259,7 +264,7 @@ insert into mag_restore_1.catalog_product_entity_varchar (
 		entity_id,
 		entity_type_id,
 		store_id)
-	select products_name, 71, products_id, 4, @magento_store_id
+	select products_name, 71, products_id, 4, 0
 	from osc_products;
 
 /* Migrate product name */
@@ -269,7 +274,7 @@ insert into mag_restore_1.catalog_product_entity_decimal (
 		entity_id,
 		entity_type_id,
 		store_id)
-	select products_price, 75, products_id, 4, @magento_store_id
+	select products_price, 75, products_id, 4, 0
 	from osc_products;
 
 /* Migrate product status */
@@ -279,7 +284,7 @@ insert into mag_restore_1.catalog_product_entity_int (
 		entity_id,
 		entity_type_id,
 		store_id)
-	select 1, 96, products_id, 4, @magento_store_id
+	select 1, 96, products_id, 4, 0 
 	from osc_products;
 
 /* Migrate product visibility */
@@ -289,7 +294,7 @@ insert into mag_restore_1.catalog_product_entity_int (
 		entity_id,
 		entity_type_id,
 		store_id)
-	select 1, 102, products_id, 4, @magento_store_id
+	select 1, 102, products_id, 4, 0
 	from osc_products;
 
 /**********
@@ -309,6 +314,25 @@ insert into osc_to_magento_order_status values
 	(6, 'pending'),
 	(7, 'canceled'),
 	(8, 'pending_paypal');
+
+create temporary table osc_to_magento_payment_map (
+	osc_method varchar(255),
+	magento_method varchar(255));
+insert into osc_to_magento_payment_map values
+	('PayPal Express Checkout', 'paypal_express'),
+	('PayPal', 'paypal_express'),
+	('PayPal Direct Payment', 'paypal_direct'),
+	('Credit Card', 'paypal_direct');
+
+create temporary table osc_to_magento_cc_type_map (
+	osc_cc_type varchar(20),
+	magento_cc_type varchar(255));
+insert into osc_to_magento_cc_type_map values
+	('', ''),
+	('Visa', 'VI'),
+	('MasterCard', 'MC'),
+	('Amex', 'AE'),
+	('Discover', 'DI');
 
 create temporary table osc_orders as (
 	select o.orders_id,
@@ -340,6 +364,7 @@ create temporary table osc_orders as (
 		o.currency as currency_code,
 		o.currency_value,
 		o_total.value as order_total,
+		/*pm.magento_method as payment_method,*/
 		o_shipping.value as order_shipping_cost,
 		o_shipping.title as order_shipping_carrier,
 		o_subtotal.value as order_subtotal,
@@ -358,6 +383,8 @@ create temporary table osc_orders as (
 				from theretrofitsource_osc22.orders_products
 				group by orders_id) as o_count
 			on o.orders_id = o_count.orders_id
+		/*join osc_to_magento_payment_map as pm
+			on o.payment_method = pm.osc_method*/
 		left join theretrofitsource_osc22.orders_total as o_total
 			on (o.orders_id = o_total.orders_id and o_total.class = 'ot_total')
 		left join theretrofitsource_osc22.orders_total as o_shipping
@@ -374,6 +401,35 @@ create temporary table osc_orders as (
 			on (o.orders_id = o_insurance.orders_id and o_insurance.class = 'ot_insurance')
 		left join theretrofitsource_osc22.orders_total as o_signature
 			on (o.orders_id = o_signature.orders_id and o_signature.class = 'ot_signature'));
+
+create temporary table osc_order_history as (
+	select o.orders_id,
+		os.status,
+		ctm.magento_cc_type as cc_type,
+		o.cc_owner,
+		replace(o.cc_number, 'X', '') as cc_last_four,
+		o.last_modified as order_last_modified,
+		o.date_purchased as order_date_purchased,
+		osh.date_added,
+		pm.magento_method as payment_method,
+		osh.comments,
+		osht.transaction_id,
+		osht.transaction_type,
+		osht.transaction_amount,
+		osht.transaction_avs,
+		osht.transaction_cvv2,
+		osht.transaction_msgs
+	from theretrofitsource_osc22.orders as o
+		join osc_to_magento_payment_map as pm
+			on o.payment_method = pm.osc_method
+		join osc_to_magento_cc_type_map as ctm
+			on o.cc_type = ctm.osc_cc_type
+		join theretrofitsource_osc22.orders_status_history as osh
+			on o.orders_id = osh.orders_id
+		join osc_to_magento_order_status as os
+			on osh.orders_status_id = os.osc_status_id
+		left join theretrofitsource_osc22.orders_status_history_transactions as osht
+			on osh.orders_status_history_id = osht.orders_status_history_id);
 
 /* Migrate order core details */
 insert into mag_restore_1.sales_flat_order (
@@ -467,6 +523,17 @@ insert into mag_restore_1.sales_flat_order_grid (
 		order_total
 	from osc_orders;
 
+drop temporary table if exists osc_order_payments;
+create temporary table osc_order_payments as (
+	select *
+	from (select orders_id,
+		order_total,
+		order_shipping_cost,
+		order_insurance,
+		order_signature from osc_orders) as o
+		left join (select * from osc_order_history where transaction_amount is not null) as tx
+			on o.orders_id = tx.orders_id);
+
 /* Migrate order payment details */
 insert into mag_restore_1.sales_flat_order_payment (
 		parent_id,
@@ -474,14 +541,25 @@ insert into mag_restore_1.sales_flat_order_payment (
 		amount_ordered,
 		base_shipping_amount,
 		shipping_amount,
-		method)
-	select orders_id,
-		order_total,
-		order_total,
-		order_shipping_cost,
-		order_shipping_cost + ifnull(order_insurance, 0.0) + ifnull(order_signature, 0.0),
-		'checkmo' /* TODO - fix this! */
-	from osc_orders;
+		method,
+		cc_last4,
+		base_amount_authorized,
+		amount_authorized,
+		last_trans_id)
+	select o.orders_id,
+		o.order_total,
+		o.order_total,
+		o.order_shipping_cost,
+		o.order_shipping_cost + ifnull(o.order_insurance, 0.0) + ifnull(o.order_signature, 0.0),
+		tx.payment_method,
+		tx.cc_last_four,
+		tx.transaction_amount,
+		tx.transaction_amount,
+		tx.transaction_id
+	from osc_order_payments;
+	/*from (select orders_id, order_total, order_shipping_cost, order_insurance, order_signature from osc_orders) as o
+		left join (select * from osc_order_history where transaction_amount is not null) as tx
+			on o.orders_id = tx.orders_id;*/
 
 /* Migrate order shipping addresses */
 insert into mag_restore_1.sales_flat_order_address (
