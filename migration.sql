@@ -21,6 +21,7 @@ set sql_safe_updates = 1;
 drop temporary table if exists osc_to_magento_cc_type_map;
 drop temporary table if exists osc_to_magento_payment_map;
 drop temporary table if exists osc_to_magento_order_status;
+drop temporary table if exists osc_order_payments;
 drop temporary table if exists osc_order_history;
 drop temporary table if exists osc_orders;
 drop temporary table if exists osc_customer_addresses;
@@ -334,7 +335,46 @@ insert into osc_to_magento_cc_type_map values
 	('Amex', 'AE'),
 	('Discover', 'DI');
 
-create temporary table osc_orders as (
+create temporary table osc_orders /*(
+	orders_id int primary key,
+	orders_status varchar(32),
+	date_purchased datetime,
+	last_modified datetime,
+	customers_id int,
+	customers_firstname varchar(255),
+	customers_lastname varchar(255),
+	customers_email varchar(255),
+	customers_telephone varchar(255),
+	delivery_name varchar(255),
+	delivery_company varchar(255),
+	delivery_street_address varchar(255),
+	delivery_suburb varchar(255),
+	delivery_city varchar(255),
+	delivery_postcode varchar(255),
+	delivery_state varchar(255),
+	delivery_country varchar(255),
+	billing_name varchar(255),
+	billing_company varchar(255),
+	billing_street_address varchar(255),
+	billing_suburb varchar(255),
+	billing_city varchar(255),
+	billing_postcode varchar(255),
+	billing_state varchar(255),
+	billing_country varchar(255),
+	product_count int,
+	currency_code char(3),
+	currency_value decimal(14,6),
+	order_total decimal(15,4),
+	order_shipping_cost decimal(15,4),
+	order_shipping_carrier varchar(255),
+	order_subtotal decimal(15,4),
+	order_discount decimal(15,4),
+	order_discount_detail varchar(255),
+	order_tax decimal(15,4),
+	order_refund decimal(15,4),
+	order_insurance decimal(15,4),
+	order_signature decimal(15,4)
+)*/ as (
 	select o.orders_id,
 		os.status as orders_status,
 		o.date_purchased,
@@ -364,7 +404,6 @@ create temporary table osc_orders as (
 		o.currency as currency_code,
 		o.currency_value,
 		o_total.value as order_total,
-		/*pm.magento_method as payment_method,*/
 		o_shipping.value as order_shipping_cost,
 		o_shipping.title as order_shipping_carrier,
 		o_subtotal.value as order_subtotal,
@@ -383,8 +422,6 @@ create temporary table osc_orders as (
 				from theretrofitsource_osc22.orders_products
 				group by orders_id) as o_count
 			on o.orders_id = o_count.orders_id
-		/*join osc_to_magento_payment_map as pm
-			on o.payment_method = pm.osc_method*/
 		left join theretrofitsource_osc22.orders_total as o_total
 			on (o.orders_id = o_total.orders_id and o_total.class = 'ot_total')
 		left join theretrofitsource_osc22.orders_total as o_shipping
@@ -401,6 +438,7 @@ create temporary table osc_orders as (
 			on (o.orders_id = o_insurance.orders_id and o_insurance.class = 'ot_insurance')
 		left join theretrofitsource_osc22.orders_total as o_signature
 			on (o.orders_id = o_signature.orders_id and o_signature.class = 'ot_signature'));
+create index `orders_id` on osc_orders(`orders_id`);
 
 create temporary table osc_order_history as (
 	select o.orders_id,
@@ -430,6 +468,7 @@ create temporary table osc_order_history as (
 			on osh.orders_status_id = os.osc_status_id
 		left join theretrofitsource_osc22.orders_status_history_transactions as osht
 			on osh.orders_status_history_id = osht.orders_status_history_id);
+create index `orders_id` on osc_order_history(`orders_id`);
 
 /* Migrate order core details */
 insert into mag_restore_1.sales_flat_order (
@@ -523,16 +562,23 @@ insert into mag_restore_1.sales_flat_order_grid (
 		order_total
 	from osc_orders;
 
-drop temporary table if exists osc_order_payments;
 create temporary table osc_order_payments as (
-	select *
-	from (select orders_id,
-		order_total,
-		order_shipping_cost,
-		order_insurance,
-		order_signature from osc_orders) as o
+	select o.order_total,
+		o.order_shipping_cost,
+		o.order_insurance,
+		o.order_signature,
+		tx.*
+	from osc_orders as o
+		left join osc_order_history as tx
+			on o.orders_id = tx.orders_id and tx.transaction_amount is not null);
+	/*from (select orders_id,
+			order_total,
+			order_shipping_cost,
+			order_insurance,
+			order_signature from osc_orders) as o
 		left join (select * from osc_order_history where transaction_amount is not null) as tx
-			on o.orders_id = tx.orders_id);
+			on o.orders_id = tx.orders_id);*/
+
 
 /* Migrate order payment details */
 insert into mag_restore_1.sales_flat_order_payment (
@@ -546,7 +592,19 @@ insert into mag_restore_1.sales_flat_order_payment (
 		base_amount_authorized,
 		amount_authorized,
 		last_trans_id)
-	select o.orders_id,
+	select orders_id,
+		order_total,
+		order_total,
+		order_shipping_cost,
+		order_shipping_cost + ifnull(order_insurance, 0.0) + ifnull(order_signature, 0.0),
+		payment_method,
+		cc_last_four,
+		transaction_amount,
+		transaction_amount,
+		transaction_id
+
+
+/*o.orders_id,
 		o.order_total,
 		o.order_total,
 		o.order_shipping_cost,
@@ -555,7 +613,7 @@ insert into mag_restore_1.sales_flat_order_payment (
 		tx.cc_last_four,
 		tx.transaction_amount,
 		tx.transaction_amount,
-		tx.transaction_id
+		tx.transaction_id*/
 	from osc_order_payments;
 	/*from (select orders_id, order_total, order_shipping_cost, order_insurance, order_signature from osc_orders) as o
 		left join (select * from osc_order_history where transaction_amount is not null) as tx
