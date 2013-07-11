@@ -214,11 +214,7 @@ insert into mag_restore_1.eav_attribute_set (
 	select @legacy_product_category_name, 4;
 
 set @legacy_attr_set_id = LAST_INSERT_ID();
-/*
-select @legacy_attr_set_id := attribute_set_id
-	from mag_restore_1.eav_attribute_set
-	where attribute_set_name = 'Legacy';
-*/
+
 insert into mag_restore_1.eav_attribute_group (
 		attribute_set_id,
 		attribute_group_name)
@@ -335,46 +331,7 @@ insert into osc_to_magento_cc_type_map values
 	('Amex', 'AE'),
 	('Discover', 'DI');
 
-create temporary table osc_orders /*(
-	orders_id int primary key,
-	orders_status varchar(32),
-	date_purchased datetime,
-	last_modified datetime,
-	customers_id int,
-	customers_firstname varchar(255),
-	customers_lastname varchar(255),
-	customers_email varchar(255),
-	customers_telephone varchar(255),
-	delivery_name varchar(255),
-	delivery_company varchar(255),
-	delivery_street_address varchar(255),
-	delivery_suburb varchar(255),
-	delivery_city varchar(255),
-	delivery_postcode varchar(255),
-	delivery_state varchar(255),
-	delivery_country varchar(255),
-	billing_name varchar(255),
-	billing_company varchar(255),
-	billing_street_address varchar(255),
-	billing_suburb varchar(255),
-	billing_city varchar(255),
-	billing_postcode varchar(255),
-	billing_state varchar(255),
-	billing_country varchar(255),
-	product_count int,
-	currency_code char(3),
-	currency_value decimal(14,6),
-	order_total decimal(15,4),
-	order_shipping_cost decimal(15,4),
-	order_shipping_carrier varchar(255),
-	order_subtotal decimal(15,4),
-	order_discount decimal(15,4),
-	order_discount_detail varchar(255),
-	order_tax decimal(15,4),
-	order_refund decimal(15,4),
-	order_insurance decimal(15,4),
-	order_signature decimal(15,4)
-)*/ as (
+create temporary table osc_orders as (
 	select o.orders_id,
 		os.status as orders_status,
 		o.date_purchased,
@@ -571,14 +528,6 @@ create temporary table osc_order_payments as (
 	from osc_orders as o
 		left join osc_order_history as tx
 			on o.orders_id = tx.orders_id and tx.transaction_amount is not null);
-	/*from (select orders_id,
-			order_total,
-			order_shipping_cost,
-			order_insurance,
-			order_signature from osc_orders) as o
-		left join (select * from osc_order_history where transaction_amount is not null) as tx
-			on o.orders_id = tx.orders_id);*/
-
 
 /* Migrate order payment details */
 insert into mag_restore_1.sales_flat_order_payment (
@@ -602,22 +551,7 @@ insert into mag_restore_1.sales_flat_order_payment (
 		transaction_amount,
 		transaction_amount,
 		transaction_id
-
-
-/*o.orders_id,
-		o.order_total,
-		o.order_total,
-		o.order_shipping_cost,
-		o.order_shipping_cost + ifnull(o.order_insurance, 0.0) + ifnull(o.order_signature, 0.0),
-		tx.payment_method,
-		tx.cc_last_four,
-		tx.transaction_amount,
-		tx.transaction_amount,
-		tx.transaction_id*/
 	from osc_order_payments;
-	/*from (select orders_id, order_total, order_shipping_cost, order_insurance, order_signature from osc_orders) as o
-		left join (select * from osc_order_history where transaction_amount is not null) as tx
-			on o.orders_id = tx.orders_id;*/
 
 /* Migrate order shipping addresses */
 insert into mag_restore_1.sales_flat_order_address (
