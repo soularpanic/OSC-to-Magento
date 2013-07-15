@@ -357,6 +357,11 @@ create temporary table osc_orders as (
 		o.billing_postcode,
 		o.billing_state,
 		o.billing_country,
+/*
+		o.cc_avs_response,
+		o.cc_cvv2_response,
+		o.paypal_txn_id,
+*/
 		o_count.product_count,
 		o.currency as currency_code,
 		o.currency_value,
@@ -397,8 +402,14 @@ create temporary table osc_orders as (
 			on (o.orders_id = o_signature.orders_id and o_signature.class = 'ot_signature'));
 create index `orders_id` on osc_orders(`orders_id`);
 
+/*
+ * The payments module was changed Nov, 2012, changing how order transations were recorded.
+ * Pre-Nov 2012 Era will be referred to as Mk1; post-Nov 2012 as Mk2.
+ */
+
 create temporary table osc_order_history as (
 	select o.orders_id,
+		osh.orders_status_history_id,
 		os.status,
 		ctm.magento_cc_type as cc_type,
 		o.cc_owner,
@@ -427,6 +438,24 @@ create temporary table osc_order_history as (
 			on osh.orders_status_history_id = osht.orders_status_history_id);
 create index `orders_id` on osc_order_history(`orders_id`);
 
+/* example only
+set sql_safe_updates = 0;
+update mag_restore_1.sales_flat_order sfo, osc_order_payments_mk1 payments
+	set sfo.base_total_paid = payments.transaction_amount,
+		sfo.total_paid = payments.transaction_amount
+	where sfo.entity_id = payments.orders_id and payments.transaction_type = 'CHARGE';
+set sql_safe_updates = 1;
+*/
+set sql_safe_updates = 0;
+update osc_order_history ooh, theretrofitsource_osc22.orders o
+	set ooh.transaction_id = o.paypal_txn_id,
+		ooh.transaction_type = if(ooh.comments regexp '.*; \\$[0-9]+.*', 'CHARGE', 'REFUND'),
+		ooh.transaction_amount = substring(comments, locate('; ', comments) + 3, locate(')', comments) - locate('; ', comments) - 3),
+		ooh.transaction_avs = o.cc_avs_response,
+		ooh.transaction_cvv2 = o.cc_cvv2_response,
+		ooh.transaction_msgs = 'hi'
+	where ooh.orders_id = o.orders_id and ooh.comments regexp '.*; \\$-?[0-9]+\\.[0-9][0-9].*';
+set sql_safe_updates = 1;
 /* Migrate order core details */
 insert into mag_restore_1.sales_flat_order (
 		entity_id,
@@ -520,14 +549,59 @@ insert into mag_restore_1.sales_flat_order_grid (
 	from osc_orders;
 
 create temporary table osc_order_payments as (
-	select o.order_total,
+	select o.orders_id,
+		o.order_total,
 		o.order_shipping_cost,
 		o.order_insurance,
 		o.order_signature,
-		tx.*
+		tx.status,
+		tx.cc_type,
+		tx.cc_owner,
+		tx.cc_last_four,
+		tx.order_last_modified,
+		tx.order_date_purchased,
+		tx.date_added,
+		tx.payment_method,
+		tx.comments,
+		tx.transaction_id,
+		tx.transaction_type,
+		tx.transaction_amount,
+		tx.transaction_avs,
+		tx.transaction_cvv2,
+		tx.transaction_msgs
 	from osc_orders as o
 		left join osc_order_history as tx
 			on o.orders_id = tx.orders_id and tx.transaction_amount is not null);
+
+/*
+insert into osc_order_payments_mk1 (
+		orders_id,
+		order_total,
+		order_shipping_cost,
+		order_insurance,
+		order_signature,
+		status,
+		cc_type,
+		cc_owner,
+		cc_last_four,
+		order_last_modified,
+		order_date_purchased,
+		date_added,
+		payment_method,
+		comments,
+		transaction_id,
+		transaction_type,
+		transaction_amount,
+		transaction_avs,
+		transaction_cvv2,
+		transaction_msgs)
+	select o.orders_id,
+		o.order_total,
+		o.order_shipping_cost,
+		o.order_insurance,
+		o.order_signature,
+	from osc_orders as o;
+*/
 
 /* Migrate order payment details */
 insert into mag_restore_1.sales_flat_order_payment (
@@ -552,6 +626,13 @@ insert into mag_restore_1.sales_flat_order_payment (
 		transaction_amount,
 		transaction_id
 	from osc_order_payments;
+
+set sql_safe_updates = 0;
+update mag_restore_1.sales_flat_order sfo, osc_order_payments payments
+	set sfo.base_total_paid = payments.transaction_amount,
+		sfo.total_paid = payments.transaction_amount
+	where sfo.entity_id = payments.orders_id and payments.transaction_type = 'CHARGE';
+set sql_safe_updates = 1;
 
 /* Migrate order shipping addresses */
 insert into mag_restore_1.sales_flat_order_address (
