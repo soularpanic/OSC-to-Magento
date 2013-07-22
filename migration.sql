@@ -3,6 +3,7 @@ set @magento_store_id = 1;
 
 /* Clear out existing customer data */
 set sql_safe_updates = 0;
+truncate mag_restore_1.sales_flat_order_item;
 truncate mag_restore_1.sales_flat_order_status_history;
 truncate mag_restore_1.sales_flat_order_address;
 truncate mag_restore_1.sales_flat_order;
@@ -686,3 +687,103 @@ insert into mag_restore_1.sales_flat_order_address (
 		orders_id,
 		'billing'
 	from osc_orders;
+
+/* Migrate order products */
+/*
+drop temporary table if exists osc_order_items;
+create temporary table osc_order_items as (
+select
+from theretrofitsource_osc22.orders_products);
+*/
+
+insert into mag_restore_1.sales_flat_order_item (
+		order_id,
+		item_id,
+		name,
+		sku,
+		qty_ordered,
+		product_type,
+		product_options,
+		price,
+		base_price,
+		original_price,
+		base_original_price,
+		row_total,
+		base_row_total,
+		price_incl_tax,
+		base_price_incl_tax,
+		row_total_incl_tax,
+		base_row_total_incl_tax,
+		store_id)
+select orders_id,
+		orders_products_id,
+		products_name,
+		products_model,
+		products_quantity,
+		'bundle',
+		'a:1:{s:15:"info_buyRequest";a:0:{}}',
+		products_price,
+		products_price,
+		products_price,
+		products_price,
+		products_price,
+		products_price,
+		products_price,
+		products_price,
+		products_price,
+		products_price,
+		1
+	from theretrofitsource_osc22.orders_products;
+
+insert into mag_restore_1.sales_flat_order_item (
+		order_id,
+		parent_item_id,
+		name,
+		sku,
+		product_type,
+		product_options,
+		qty_ordered,
+		/*price,
+		base_price,
+		original_price,
+		base_original_price,
+		row_total,
+		base_row_total,
+		price_incl_tax,
+		base_price_incl_tax,
+		row_total_incl_tax,
+		base_row_total_incl_tax,*/
+		store_id)
+
+
+select orders_id,
+		orders_products_id,
+		products_options_values,
+		replace(concat_ws(' ', 'Legacy', products_options, products_options_values), ' ', '-'),
+		'simple',
+		concat('a:2:{s:15:"info_buyRequest";a:0:{}s:27:"bundle_selection_attributes";s:',
+			cast(84 + char_length(char_length(products_options)) + char_length(products_options) + char_length(orders_products_attributes_id) + char_length(char_length(orders_products_attributes_id)) as char),
+			':"a:4:{s:5:"price";d:',
+			'0',
+			';s:3:"qty";d:1;s:12:"option_label";s:',
+			cast(char_length(products_options) as char),
+			':"',
+			cast(products_options as char),
+			'";s:9:"option_id";s:',
+			cast(char_length(orders_products_attributes_id) as char),
+			':"',
+			cast(orders_products_attributes_id as char),
+			'";}";}'),
+		0,
+		/* 0,
+		0,
+		0,
+		products_price,
+		products_price,
+		products_price,
+		products_price,
+		products_price,
+		products_price,
+		products_price, */
+		1
+	from theretrofitsource_osc22.orders_products_attributes;
