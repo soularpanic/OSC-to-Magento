@@ -1,8 +1,18 @@
 set @legacy_product_category_name = 'Legacy';
 set @magento_store_id = 1;
+set @rating_code = 'Rating';
+select max(orders_id) from theretrofitsource_osc22.orders
+	into @custom_orders_id_boost_magic_number;
+select max(orders_status_history_id) from theretrofitsource_osc22.orders_status_history
+	into @custom_orders_history_id_boost_magic_number;
+select max(orders_products_id) from theretrofitsource_osc22.orders_products 
+	into @custom_orders_products_id_boost_magic_number;
 
 /* Clear out existing customer data */
 set sql_safe_updates = 0;
+delete from mag_restore_1.rating
+	where rating_code = @rating_code;
+truncate mag_restore_1.review;
 truncate mag_restore_1.sales_flat_order_item;
 truncate mag_restore_1.sales_flat_order_status_history;
 truncate mag_restore_1.sales_flat_order_address;
@@ -314,28 +324,42 @@ create temporary table osc_to_magento_payment_map (
 	magento_method varchar(255));
 insert into osc_to_magento_payment_map values
 	('PayPal Express Checkout', 'paypal_express'),
-	('PayPal', 'paypal_express'),
-	('PayPal Direct Payment', 'paypal_direct'),
-	('Credit Card', 'paypal_direct');
+	('PayPal',					'paypal_express'),
+	('PayPal Direct Payment',	'paypal_direct'),
+	('Credit Card',				'paypal_direct');
 
 drop temporary table if exists osc_to_magento_cc_type_map;
 create temporary table osc_to_magento_cc_type_map (
 	osc_cc_type varchar(20),
 	magento_cc_type varchar(255));
 insert into osc_to_magento_cc_type_map values
-	('', ''),
-	('Visa', 'VI'),
-	('MasterCard', 'MC'),
-	('Amex', 'AE'),
-	('Discover', 'DI');
+	('',			''),
+	('Visa',		'VI'),
+	('MasterCard',	'MC'),
+	('Amex',		'AE'),
+	('Discover',	'DI');
 
 drop temporary table if exists osc_order_product_count;
 create temporary table osc_order_product_count as (
-	select orders_id, count(*) as product_count 
-				from theretrofitsource_osc22.orders_products
-				group by orders_id 
-);
+	select orders_id,
+			count(*) as product_count 
+		from theretrofitsource_osc22.orders_products
+		group by orders_id);
 create index `orders_id` on osc_order_product_count(`orders_id`);
+
+drop temporary table if exists osc_custom_orders;
+create temporary table osc_custom_orders as (
+	select co.custom_orders_id + @custom_orders_id_boost_magic_number as orders_id,
+			co.custom_orders_id + @custom_orders_history_id_boost_magic_number as orders_history_id,
+			co.date_added,
+			sum(ifnull(cop.products_price, 0)) as order_total,
+			co.customers_name,
+			co.customers_email_address,
+			co.comments
+		from theretrofitsource_osc22.custom_orders as co
+			left join theretrofitsource_osc22.custom_orders_products as cop
+				on co.custom_orders_id = cop.custom_orders_id
+		group by co.custom_orders_id);
 
 drop temporary table if exists osc_orders;
 create temporary table osc_orders as (
@@ -402,6 +426,31 @@ create temporary table osc_orders as (
 			on (o.orders_id = o_signature.orders_id and o_signature.class = 'ot_signature'));
 create index `orders_id` on osc_orders(`orders_id`);
 
+insert into osc_orders (
+		orders_id,
+		orders_status,
+		date_purchased,
+		last_modified,
+		order_total,
+		customers_lastname,
+		delivery_name,
+		billing_name,
+		customers_email,
+		currency_code,
+		customers_id)
+	select orders_id,
+			'complete',
+			date_added,
+			date_added,
+			order_total,
+			customers_name,
+			customers_name,
+			customers_name,
+			customers_email_address,
+			'USD',
+			null
+		from osc_custom_orders;
+
 /*
  * The payments module was changed Nov, 2012, changing how order transations were recorded.
  */
@@ -464,6 +513,31 @@ update osc_order_history ooh, theretrofitsource_osc22.orders o, osc_orders oo
 		and ooh.orders_id = o.orders_id
 		and o.orders_id = oo.orders_id;
 set sql_safe_updates = 1;
+
+insert into osc_order_history (
+		orders_id,
+		orders_status_history_id,
+		status,
+		order_last_modified,
+		order_date_purchased,
+		date_added,
+		payment_method,
+		comments,
+		transaction_type,
+		transaction_amount,
+		transaction_msgs)
+	select orders_id,
+			orders_history_id,
+			'complete',
+			date_added,
+			date_added,
+			date_added,
+			'checkmo',
+			comments,
+			'CHARGE',
+			order_total,
+			'Legacy Custom Order; Payment Assumed'
+		from osc_custom_orders;
 
 drop temporary table if exists osc_order_payments;
 create temporary table osc_order_payments as (
@@ -689,13 +763,6 @@ insert into mag_restore_1.sales_flat_order_address (
 	from osc_orders;
 
 /* Migrate order products */
-/*
-drop temporary table if exists osc_order_items;
-create temporary table osc_order_items as (
-select
-from theretrofitsource_osc22.orders_products);
-*/
-
 insert into mag_restore_1.sales_flat_order_item (
 		order_id,
 		item_id,
@@ -715,7 +782,7 @@ insert into mag_restore_1.sales_flat_order_item (
 		row_total_incl_tax,
 		base_row_total_incl_tax,
 		store_id)
-select orders_id,
+	select orders_id,
 		orders_products_id,
 		products_name,
 		products_model,
@@ -737,13 +804,13 @@ select orders_id,
 
 insert into mag_restore_1.sales_flat_order_item (
 		order_id,
-		parent_item_id,
+		item_id,
 		name,
 		sku,
+		qty_ordered,
 		product_type,
 		product_options,
-		qty_ordered,
-		/*price,
+		price,
 		base_price,
 		original_price,
 		base_original_price,
@@ -752,11 +819,40 @@ insert into mag_restore_1.sales_flat_order_item (
 		price_incl_tax,
 		base_price_incl_tax,
 		row_total_incl_tax,
-		base_row_total_incl_tax,*/
+		base_row_total_incl_tax,
 		store_id)
+	select cop.custom_orders_id + @custom_orders_id_boost_magic_number,
+		cop.products_id + @custom_orders_products_id_boost_magic_number,
+		cop.products_name,
+		concat('custom-', cop.products_id),
+		cop.products_quantity,
+		'simple',
+		null,
+		cop.products_price,
+		cop.products_price,
+		cop.products_price,
+		cop.products_price,
+		cop.products_price,
+		cop.products_price,
+		cop.products_price,
+		cop.products_price,
+		cop.products_price,
+		cop.products_price,
+		1
+	from theretrofitsource_osc22.custom_orders as co
+		join theretrofitsource_osc22.custom_orders_products as cop
+			on co.custom_orders_id = cop.custom_orders_id;
 
-
-select orders_id,
+insert into mag_restore_1.sales_flat_order_item (
+		order_id,
+		parent_item_id,
+		name,
+		sku,
+		product_type,
+		product_options,
+		qty_ordered,
+		store_id)
+	select orders_id,
 		orders_products_id,
 		products_options_values,
 		replace(concat_ws(' ', 'Legacy', products_options, products_options_values), ' ', '-'),
@@ -775,15 +871,97 @@ select orders_id,
 			cast(orders_products_attributes_id as char),
 			'";}";}'),
 		0,
-		/* 0,
-		0,
-		0,
-		products_price,
-		products_price,
-		products_price,
-		products_price,
-		products_price,
-		products_price,
-		products_price, */
 		1
 	from theretrofitsource_osc22.orders_products_attributes;
+
+/* Create new rating */
+insert into mag_restore_1.rating (
+		rating_code,
+		entity_id,
+		position)
+	select @rating_code,
+		1,
+		0;
+
+set @rating_id = LAST_INSERT_ID();
+insert into mag_restore_1.rating_option (
+		rating_id,
+		code,
+		value,
+		position)
+	values (@rating_id, 1, 1, 1),
+		(@rating_id, 2, 2, 2),
+		(@rating_id, 3, 3, 3),
+		(@rating_id, 4, 4, 4),
+		(@rating_id, 5, 5, 5);
+
+drop temporary table if exists osc_reviews;
+create temporary table osc_reviews as (
+	select r.reviews_id,
+		r.products_id,
+		r.customers_id,
+		r.customers_name,
+		r.reviews_rating,
+		r.date_added,
+		rd.reviews_text,
+		ro.option_id
+	from theretrofitsource_osc22.reviews as r
+		join theretrofitsource_osc22.reviews_description as rd
+			on r.reviews_id = rd.reviews_id
+		join mag_restore_1.rating_option as ro
+			on r.reviews_rating = ro.value and ro.rating_id = @rating_id);
+
+insert into mag_restore_1.review (
+		review_id,
+		created_at,
+		entity_pk_value,
+		entity_id,
+		status_id)
+	select reviews_id,
+		date_added,
+		products_id,
+		1,
+		1
+	from osc_reviews;
+
+insert into mag_restore_1.rating_option_vote (
+		customer_id,
+		option_id,
+		review_id,
+		value,
+		percent,
+		entity_pk_value)
+	select customers_id,
+		option_id,
+		reviews_id,
+		reviews_rating,
+		100 * reviews_rating div 5,
+		products_id
+	from osc_reviews;
+
+insert into mag_restore_1.review_detail (
+		review_id,
+		store_id,
+		detail,
+		nickname,
+		customer_id)
+	select reviews_id,
+		1,
+		reviews_text,
+		customers_name,
+		customers_id
+	from osc_reviews;
+
+insert into mag_restore_1.review_store (
+		review_id,
+		store_id)
+	select reviews_id,
+		0
+	from osc_reviews;
+
+insert into mag_restore_1.review_store (
+		review_id,
+		store_id)
+	select reviews_id,
+		1
+	from osc_reviews;
