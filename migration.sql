@@ -1,12 +1,6 @@
 set @legacy_product_category_name = 'Legacy';
 set @magento_store_id = 1;
 set @rating_code = 'Rating';
-select max(orders_id) from theretrofitsource_osc22.orders
-	into @custom_orders_id_boost_magic_number;
-select max(orders_status_history_id) from theretrofitsource_osc22.orders_status_history
-	into @custom_orders_history_id_boost_magic_number;
-select max(orders_products_id) from theretrofitsource_osc22.orders_products 
-	into @custom_orders_products_id_boost_magic_number;
 
 /* Clear out existing customer data */
 set sql_safe_updates = 0;
@@ -289,6 +283,10 @@ insert into mag_restore_1.catalog_product_entity_int (
 	from osc_products;
 
 /* Migrate product visibility */
+
+# This block makes legacy products visible in the product grid, but it does not 
+# seem to affect their appearance in orders, which is what we care about.
+/*
 insert into mag_restore_1.catalog_product_entity_int (
 		value,
 		attribute_id,
@@ -297,6 +295,7 @@ insert into mag_restore_1.catalog_product_entity_int (
 		store_id)
 	select 1, 102, products_id, 4, 0
 	from osc_products;
+*/
 
 /**********
  * ORDERS
@@ -346,20 +345,6 @@ create temporary table osc_order_product_count as (
 		from theretrofitsource_osc22.orders_products
 		group by orders_id);
 create index `orders_id` on osc_order_product_count(`orders_id`);
-
-drop temporary table if exists osc_custom_orders;
-create temporary table osc_custom_orders as (
-	select co.custom_orders_id + @custom_orders_id_boost_magic_number as orders_id,
-			co.custom_orders_id + @custom_orders_history_id_boost_magic_number as orders_history_id,
-			co.date_added,
-			sum(ifnull(cop.products_price, 0)) as order_total,
-			co.customers_name,
-			co.customers_email_address,
-			co.comments
-		from theretrofitsource_osc22.custom_orders as co
-			left join theretrofitsource_osc22.custom_orders_products as cop
-				on co.custom_orders_id = cop.custom_orders_id
-		group by co.custom_orders_id);
 
 drop temporary table if exists osc_orders;
 create temporary table osc_orders as (
@@ -426,31 +411,6 @@ create temporary table osc_orders as (
 			on (o.orders_id = o_signature.orders_id and o_signature.class = 'ot_signature'));
 create index `orders_id` on osc_orders(`orders_id`);
 
-insert into osc_orders (
-		orders_id,
-		orders_status,
-		date_purchased,
-		last_modified,
-		order_total,
-		customers_lastname,
-		delivery_name,
-		billing_name,
-		customers_email,
-		currency_code,
-		customers_id)
-	select orders_id,
-			'complete',
-			date_added,
-			date_added,
-			order_total,
-			customers_name,
-			customers_name,
-			customers_name,
-			customers_email_address,
-			'USD',
-			null
-		from osc_custom_orders;
-
 /*
  * The payments module was changed Nov, 2012, changing how order transations were recorded.
  */
@@ -514,31 +474,6 @@ update osc_order_history ooh, theretrofitsource_osc22.orders o, osc_orders oo
 		and o.orders_id = oo.orders_id;
 set sql_safe_updates = 1;
 
-insert into osc_order_history (
-		orders_id,
-		orders_status_history_id,
-		status,
-		order_last_modified,
-		order_date_purchased,
-		date_added,
-		payment_method,
-		comments,
-		transaction_type,
-		transaction_amount,
-		transaction_msgs)
-	select orders_id,
-			orders_history_id,
-			'complete',
-			date_added,
-			date_added,
-			date_added,
-			'checkmo',
-			comments,
-			'CHARGE',
-			order_total,
-			'Legacy Custom Order; Payment Assumed'
-		from osc_custom_orders;
-
 drop temporary table if exists osc_order_payments;
 create temporary table osc_order_payments as (
 	select o.orders_id,
@@ -596,6 +531,8 @@ insert into mag_restore_1.sales_flat_order (
 		tax_amount,
 		base_discount_amount,
 		discount_amount,
+		discount_description,
+		#coupon_rule_name,
 		base_total_refunded,
 		total_refunded)
 	select orders_id,
@@ -625,6 +562,7 @@ insert into mag_restore_1.sales_flat_order (
 		order_tax,
 		order_discount,
 		order_discount,
+		order_discount_detail,
 		order_refund,
 		order_refund
 	from osc_orders;
@@ -801,47 +739,6 @@ insert into mag_restore_1.sales_flat_order_item (
 		products_price,
 		1
 	from theretrofitsource_osc22.orders_products;
-
-insert into mag_restore_1.sales_flat_order_item (
-		order_id,
-		item_id,
-		name,
-		sku,
-		qty_ordered,
-		product_type,
-		product_options,
-		price,
-		base_price,
-		original_price,
-		base_original_price,
-		row_total,
-		base_row_total,
-		price_incl_tax,
-		base_price_incl_tax,
-		row_total_incl_tax,
-		base_row_total_incl_tax,
-		store_id)
-	select cop.custom_orders_id + @custom_orders_id_boost_magic_number,
-		cop.products_id + @custom_orders_products_id_boost_magic_number,
-		cop.products_name,
-		concat('custom-', cop.products_id),
-		cop.products_quantity,
-		'simple',
-		null,
-		cop.products_price,
-		cop.products_price,
-		cop.products_price,
-		cop.products_price,
-		cop.products_price,
-		cop.products_price,
-		cop.products_price,
-		cop.products_price,
-		cop.products_price,
-		cop.products_price,
-		1
-	from theretrofitsource_osc22.custom_orders as co
-		join theretrofitsource_osc22.custom_orders_products as cop
-			on co.custom_orders_id = cop.custom_orders_id;
 
 insert into mag_restore_1.sales_flat_order_item (
 		order_id,
