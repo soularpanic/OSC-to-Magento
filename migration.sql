@@ -863,6 +863,17 @@ insert into mag_restore_1.review_store (
 	from osc_reviews;
 
 /* Create a table for migration records */
+drop temporary table if exists mag_products;
+create temporary table mag_products as (
+select cpev.value as name,
+		cpev.entity_id,
+		cpe.sku
+	from mag_restore_1.catalog_product_entity_varchar as cpev
+		left join mag_restore_1.catalog_product_entity as cpe
+			on cpev.entity_id = cpe.entity_id
+	where cpev.attribute_id = 71 and cpe.attribute_set_id != @legacy_attr_set_id);
+
+
 drop table if exists mag_restore_1.migration_record;
 create table mag_restore_1.migration_record (
 	legacy_id int,
@@ -882,12 +893,12 @@ insert into mag_restore_1.migration_record (
 		op.products_id,
 		op.products_model,
 		op.products_name,
-		cpev.entity_id,
-		cpe.sku,
-		cpev.value
+		mp.entity_id,
+		mp.sku,
+		mp.name
 	from osc_products as op
-		left join mag_restore_1.catalog_product_entity_varchar as cpev
-			on (cpev.attribute_id = 71 and op.products_name = cpev.value)
-		left join mag_restore_1.catalog_product_entity as cpe
-			on cpev.entity_id = cpe.entity_id
-		where products_model is not null and products_model != '';
+		left join mag_products as mp
+			on op.products_name = mp.name
+		where op.products_model is not null and op.products_model != '';
+
+select * from mag_restore_1.migration_record;
