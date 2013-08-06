@@ -532,7 +532,6 @@ insert into mag_restore_1.sales_flat_order (
 		base_discount_amount,
 		discount_amount,
 		discount_description,
-		#coupon_rule_name,
 		base_total_refunded,
 		total_refunded)
 	select orders_id,
@@ -862,3 +861,33 @@ insert into mag_restore_1.review_store (
 	select reviews_id,
 		1
 	from osc_reviews;
+
+/* Create a table for migration records */
+drop table if exists mag_restore_1.migration_record;
+create table mag_restore_1.migration_record (
+	legacy_id int,
+	legacy_sku varchar(255),
+	legacy_name varchar(255),
+	mag_id int,
+	mag_sku varchar(255),
+	mag_name varchar(255));
+insert into mag_restore_1.migration_record (
+		legacy_id,
+		legacy_sku,
+		legacy_name,
+		mag_id,
+		mag_sku,
+		mag_name)
+	select
+		op.products_id,
+		op.products_model,
+		op.products_name,
+		cpev.entity_id,
+		cpe.sku,
+		cpev.value
+	from osc_products as op
+		left join mag_restore_1.catalog_product_entity_varchar as cpev
+			on (cpev.attribute_id = 71 and op.products_name = cpev.value)
+		left join mag_restore_1.catalog_product_entity as cpe
+			on cpev.entity_id = cpe.entity_id
+		where products_model is not null and products_model != '';
