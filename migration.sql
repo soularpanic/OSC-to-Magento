@@ -4,24 +4,24 @@ set @rating_code = 'Rating';
 
 /* Clear out existing customer data */
 set sql_safe_updates = 0;
-delete from mag_restore_1.rating
+delete from MAGENTO_DB.rating
 	where rating_code = @rating_code;
-truncate mag_restore_1.review;
-truncate mag_restore_1.sales_flat_order_item;
-truncate mag_restore_1.sales_flat_order_status_history;
-truncate mag_restore_1.sales_flat_order_address;
-truncate mag_restore_1.sales_flat_order;
-truncate mag_restore_1.sales_flat_order_payment;
-truncate mag_restore_1.sales_flat_order_grid;
-delete from mag_restore_1.eav_attribute_set 
+truncate MAGENTO_DB.review;
+truncate MAGENTO_DB.sales_flat_order_item;
+truncate MAGENTO_DB.sales_flat_order_status_history;
+truncate MAGENTO_DB.sales_flat_order_address;
+truncate MAGENTO_DB.sales_flat_order;
+truncate MAGENTO_DB.sales_flat_order_payment;
+truncate MAGENTO_DB.sales_flat_order_grid;
+delete from MAGENTO_DB.eav_attribute_set 
 	where attribute_set_name = @legacy_product_category_name;
-truncate mag_restore_1.customer_address_entity_int;
-truncate mag_restore_1.customer_address_entity_text;
-truncate mag_restore_1.customer_address_entity_varchar;
-truncate mag_restore_1.customer_address_entity;
-truncate mag_restore_1.customer_entity_int;
-truncate mag_restore_1.customer_entity_varchar;
-truncate mag_restore_1.customer_entity;
+truncate MAGENTO_DB.customer_address_entity_int;
+truncate MAGENTO_DB.customer_address_entity_text;
+truncate MAGENTO_DB.customer_address_entity_varchar;
+truncate MAGENTO_DB.customer_address_entity;
+truncate MAGENTO_DB.customer_entity_int;
+truncate MAGENTO_DB.customer_entity_varchar;
+truncate MAGENTO_DB.customer_entity;
 set sql_safe_updates = 1;
 
 /***********
@@ -29,7 +29,7 @@ set sql_safe_updates = 1;
  ***********/
 
 /* Migrate customer core data */
-insert into mag_restore_1.customer_entity (
+insert into MAGENTO_DB.customer_entity (
 		entity_id,
 		email,
 		is_active,
@@ -38,25 +38,25 @@ insert into mag_restore_1.customer_entity (
 		store_id,
 		entity_type_id)
 	select customers_id, customers_email_address, 1, 1, 1, @magento_store_id, 1
-	from theretrofitsource_osc22.customers;
+	from OSC_DB.customers;
 
 /* Migrate customer first names */
-insert into mag_restore_1.customer_entity_varchar (
+insert into MAGENTO_DB.customer_entity_varchar (
 		entity_type_id,
 		attribute_id,
 		entity_id,
 		value)
 	select 1, 5, customers_id, customers_firstname
-	from theretrofitsource_osc22.customers;
+	from OSC_DB.customers;
 
 /* Migrate customer last names */
-insert into mag_restore_1.customer_entity_varchar (
+insert into MAGENTO_DB.customer_entity_varchar (
 		entity_type_id, 
 		attribute_id,
 		entity_id,
 		value)
 	select 1, 7, customers_id, customers_lastname
-	from theretrofitsource_osc22.customers;
+	from OSC_DB.customers;
 
 drop temporary table if exists osc_customer_addresses;
 create temporary table osc_customer_addresses as (
@@ -74,16 +74,16 @@ create temporary table osc_customer_addresses as (
 			z.zone_id,
 			cn.countries_iso_code_2 as country_code,
 			c.customers_telephone
-	from theretrofitsource_osc22.address_book as ab
-		join theretrofitsource_osc22.customers as c
+	from OSC_DB.address_book as ab
+		join OSC_DB.customers as c
 			on ab.customers_id = c.customers_id
-		join theretrofitsource_osc22.zones as z
+		join OSC_DB.zones as z
 			on ab.entry_zone_id = z.zone_id
-		join theretrofitsource_osc22.countries as cn
+		join OSC_DB.countries as cn
 			on ab.entry_country_id = cn.countries_id);
 
 /* Migrate customer address core data */
-insert into mag_restore_1.customer_address_entity (
+insert into MAGENTO_DB.customer_address_entity (
 		entity_id,
 		parent_id,
 		entity_type_id,
@@ -93,7 +93,7 @@ insert into mag_restore_1.customer_address_entity (
 	from osc_customer_addresses;
 
 /* Address - First Name */
-insert into mag_restore_1.customer_address_entity_varchar (
+insert into MAGENTO_DB.customer_address_entity_varchar (
 		value,
 		attribute_id,
 		entity_id,
@@ -102,7 +102,7 @@ insert into mag_restore_1.customer_address_entity_varchar (
 	from osc_customer_addresses;
 
 /* Address - Last Name */
-insert into mag_restore_1.customer_address_entity_varchar (
+insert into MAGENTO_DB.customer_address_entity_varchar (
 		value,
 		attribute_id,
 		entity_id,
@@ -111,7 +111,7 @@ insert into mag_restore_1.customer_address_entity_varchar (
 	from osc_customer_addresses;
 
 /* Address - Company Name */
-insert into mag_restore_1.customer_address_entity_varchar (
+insert into MAGENTO_DB.customer_address_entity_varchar (
 		value,
 		attribute_id,
 		entity_id,
@@ -120,7 +120,7 @@ insert into mag_restore_1.customer_address_entity_varchar (
 	from osc_customer_addresses;
 
 /* Address - Street */
-insert into mag_restore_1.customer_address_entity_text (
+insert into MAGENTO_DB.customer_address_entity_text (
 		value,
 		attribute_id,
 		entity_id,
@@ -130,7 +130,7 @@ insert into mag_restore_1.customer_address_entity_text (
 	from osc_customer_addresses;
 
 /* Address - City */
-insert into mag_restore_1.customer_address_entity_varchar (
+insert into MAGENTO_DB.customer_address_entity_varchar (
 		value,
 		attribute_id,
 		entity_id,
@@ -139,7 +139,7 @@ insert into mag_restore_1.customer_address_entity_varchar (
 	from osc_customer_addresses;
 
 /* Address - Zone/State */
-insert into mag_restore_1.customer_address_entity_varchar (
+insert into MAGENTO_DB.customer_address_entity_varchar (
 		value,
 		attribute_id,
 		entity_id,
@@ -148,7 +148,7 @@ insert into mag_restore_1.customer_address_entity_varchar (
 	from osc_customer_addresses;
 
 /* Address - Country */
-insert into mag_restore_1.customer_address_entity_varchar (
+insert into MAGENTO_DB.customer_address_entity_varchar (
 		value,
 		attribute_id,
 		entity_id,
@@ -157,7 +157,7 @@ insert into mag_restore_1.customer_address_entity_varchar (
 	from osc_customer_addresses;
 
 /* Address - US, Canada State Dropdown */
-insert into mag_restore_1.customer_address_entity_int (
+insert into MAGENTO_DB.customer_address_entity_int (
 		value,
 		attribute_id,
 		entity_id,
@@ -167,7 +167,7 @@ insert into mag_restore_1.customer_address_entity_int (
 	where zone_id <= 78;
 
 /* Address - Zip Code */
-insert into mag_restore_1.customer_address_entity_varchar (
+insert into MAGENTO_DB.customer_address_entity_varchar (
 		value,
 		attribute_id,
 		entity_id,
@@ -176,7 +176,7 @@ insert into mag_restore_1.customer_address_entity_varchar (
 	from osc_customer_addresses;
 
 /* Address - Telephone number */
-insert into mag_restore_1.customer_address_entity_varchar (
+insert into MAGENTO_DB.customer_address_entity_varchar (
 		value,
 		attribute_id,
 		entity_id,
@@ -185,7 +185,7 @@ insert into mag_restore_1.customer_address_entity_varchar (
 	from osc_customer_addresses;
 
 /* Associate customers' default addresses */
-insert into mag_restore_1.customer_entity_int (
+insert into MAGENTO_DB.customer_entity_int (
 		value,
 		attribute_id,
 		entity_id,
@@ -193,7 +193,7 @@ insert into mag_restore_1.customer_entity_int (
 	select distinct customers_default_address_id, 13, customers_id, 1
 	from osc_customer_addresses;
 
-insert into mag_restore_1.customer_entity_int (
+insert into MAGENTO_DB.customer_entity_int (
 		value,
 		attribute_id,
 		entity_id,
@@ -206,27 +206,27 @@ insert into mag_restore_1.customer_entity_int (
  ***********/
 
 /* Create legacy product attribute set */
-insert into mag_restore_1.eav_attribute_set (
+insert into MAGENTO_DB.eav_attribute_set (
 		attribute_set_name,
 		entity_type_id)
 	select @legacy_product_category_name, 4;
 
 set @legacy_attr_set_id = LAST_INSERT_ID();
 
-insert into mag_restore_1.eav_attribute_group (
+insert into MAGENTO_DB.eav_attribute_group (
 		attribute_set_id,
 		attribute_group_name)
 	select @legacy_attr_set_id, 'Legacy Attributes';
 
 set @legacy_attr_set_grp_id = LAST_INSERT_ID();
 
-insert into mag_restore_1.eav_entity_attribute (
+insert into MAGENTO_DB.eav_entity_attribute (
 		attribute_id,
 		attribute_group_id,
 		attribute_set_id,
 		entity_type_id)
 	select attribute_id, @legacy_attr_set_grp_id, @legacy_attr_set_id, 4
-	from mag_restore_1.eav_attribute
+	from MAGENTO_DB.eav_attribute
 		where entity_type_id = 4 and (attribute_code in ('name', 'price', 'status'));
 
 drop temporary table if exists osc_products;
@@ -235,12 +235,12 @@ create temporary table osc_products as (
 			p.products_model,
 			pd.products_name,
 			p.products_price
-	from theretrofitsource_osc22.products as p
-		join theretrofitsource_osc22.products_description as pd
+	from OSC_DB.products as p
+		join OSC_DB.products_description as pd
 			on p.products_id = pd.products_id);
 
 /* Migrate product core data */
-insert into mag_restore_1.catalog_product_entity (
+insert into MAGENTO_DB.catalog_product_entity (
 		entity_id,
 		sku,
 		entity_type_id,
@@ -253,7 +253,7 @@ insert into mag_restore_1.catalog_product_entity (
 /* TODO - Why are these store ids 0 when the others are 1? */
 
 /* Migrate product name */
-insert into mag_restore_1.catalog_product_entity_varchar (
+insert into MAGENTO_DB.catalog_product_entity_varchar (
 		value,
 		attribute_id,
 		entity_id,
@@ -262,8 +262,8 @@ insert into mag_restore_1.catalog_product_entity_varchar (
 	select products_name, 71, products_id, 4, 0
 	from osc_products;
 
-/* Migrate product name */
-insert into mag_restore_1.catalog_product_entity_decimal (
+/* Migrate product price */
+insert into MAGENTO_DB.catalog_product_entity_decimal (
 		value,
 		attribute_id,
 		entity_id,
@@ -273,7 +273,7 @@ insert into mag_restore_1.catalog_product_entity_decimal (
 	from osc_products;
 
 /* Migrate product status */
-insert into mag_restore_1.catalog_product_entity_int (
+insert into MAGENTO_DB.catalog_product_entity_int (
 		value,
 		attribute_id,
 		entity_id,
@@ -287,7 +287,7 @@ insert into mag_restore_1.catalog_product_entity_int (
 # This block makes legacy products visible in the product grid, but it does not 
 # seem to affect their appearance in orders, which is what we care about.
 /*
-insert into mag_restore_1.catalog_product_entity_int (
+insert into MAGENTO_DB.catalog_product_entity_int (
 		value,
 		attribute_id,
 		entity_id,
@@ -342,7 +342,7 @@ drop temporary table if exists osc_order_product_count;
 create temporary table osc_order_product_count as (
 	select orders_id,
 			count(*) as product_count 
-		from theretrofitsource_osc22.orders_products
+		from OSC_DB.orders_products
 		group by orders_id);
 create index `orders_id` on osc_order_product_count(`orders_id`);
 
@@ -386,28 +386,28 @@ create temporary table osc_orders as (
 		o_refund.value as order_refund,
 		o_insurance.value as order_insurance,
 		o_signature.value as order_signature
-	from theretrofitsource_osc22.orders as o
+	from OSC_DB.orders as o
 		join osc_to_magento_order_status as os
 			on o.orders_status = os.osc_status_id
-		left join theretrofitsource_osc22.customers as c
+		left join OSC_DB.customers as c
 			on o.customers_id = c.customers_id
 		left join osc_order_product_count as o_count
 			on o.orders_id = o_count.orders_id
-		left join theretrofitsource_osc22.orders_total as o_total
+		left join OSC_DB.orders_total as o_total
 			on (o.orders_id = o_total.orders_id and o_total.class = 'ot_total')
-		left join theretrofitsource_osc22.orders_total as o_shipping
+		left join OSC_DB.orders_total as o_shipping
 			on (o.orders_id = o_shipping.orders_id and o_shipping.class = 'ot_shipping')
-		left join theretrofitsource_osc22.orders_total as o_subtotal
+		left join OSC_DB.orders_total as o_subtotal
 			on (o.orders_id = o_subtotal.orders_id and o_subtotal.class = 'ot_subtotal')
-		left join theretrofitsource_osc22.orders_total as o_discount
+		left join OSC_DB.orders_total as o_discount
 			on (o.orders_id = o_discount.orders_id and o_discount.class = 'ot_discount_coupon')
-		left join theretrofitsource_osc22.orders_total as o_tax
+		left join OSC_DB.orders_total as o_tax
 			on (o.orders_id = o_tax.orders_id and o_tax.class = 'ot_tax')
-		left join theretrofitsource_osc22.orders_total as o_refund
+		left join OSC_DB.orders_total as o_refund
 			on (o.orders_id = o_refund.orders_id and o_refund.class = 'ot_refund')
-		left join theretrofitsource_osc22.orders_total as o_insurance
+		left join OSC_DB.orders_total as o_insurance
 			on (o.orders_id = o_insurance.orders_id and o_insurance.class = 'ot_insurance')
-		left join theretrofitsource_osc22.orders_total as o_signature
+		left join OSC_DB.orders_total as o_signature
 			on (o.orders_id = o_signature.orders_id and o_signature.class = 'ot_signature'));
 create index `orders_id` on osc_orders(`orders_id`);
 
@@ -436,21 +436,21 @@ create temporary table osc_order_history as (
 		osht.transaction_avs,
 		osht.transaction_cvv2,
 		osht.transaction_msgs
-	from theretrofitsource_osc22.orders as o
+	from OSC_DB.orders as o
 		join osc_to_magento_payment_map as pm
 			on o.payment_method = pm.osc_method
 		join osc_to_magento_cc_type_map as ctm
 			on o.cc_type = ctm.osc_cc_type
-		join theretrofitsource_osc22.orders_status_history as osh
+		join OSC_DB.orders_status_history as osh
 			on o.orders_id = osh.orders_id
 		join osc_to_magento_order_status as os
 			on osh.orders_status_id = os.osc_status_id
-		left join theretrofitsource_osc22.orders_status_history_transactions as osht
+		left join OSC_DB.orders_status_history_transactions as osht
 			on osh.orders_status_history_id = osht.orders_status_history_id);
 create index `orders_id` on osc_order_history(`orders_id`);
 
 set sql_safe_updates = 0;
-update osc_order_history ooh, theretrofitsource_osc22.orders o
+update osc_order_history ooh, OSC_DB.orders o
 	set ooh.transaction_id = o.paypal_txn_id,
 		ooh.transaction_type = if(ooh.comments regexp '.*; \\$[0-9]+.*', 'CHARGE', 'REFUND'),
 		ooh.transaction_amount = substring(comments, locate('; ', comments) + 3, locate(')', comments) - locate('; ', comments) - 3),
@@ -459,7 +459,7 @@ update osc_order_history ooh, theretrofitsource_osc22.orders o
 		ooh.transaction_msgs = 'Post Nov 2013 PayPal Transaction'
 	where ooh.orders_id = o.orders_id and ooh.comments regexp '.*; \\$-?[0-9]+\\.[0-9][0-9].*';
 
-update osc_order_history ooh, theretrofitsource_osc22.orders o, osc_orders oo
+update osc_order_history ooh, OSC_DB.orders o, osc_orders oo
 	set ooh.transaction_id = o.paypal_txn_id,
 		ooh.transaction_type = 'CHARGE',
 		ooh.transaction_amount = oo.order_total,
@@ -503,7 +503,7 @@ create temporary table osc_order_payments as (
 			on o.orders_id = tx.orders_id and tx.transaction_amount is not null);
 
 /* Migrate order core details */
-insert into mag_restore_1.sales_flat_order (
+insert into MAGENTO_DB.sales_flat_order (
 		entity_id,
 		increment_id,
 		status,
@@ -567,7 +567,7 @@ insert into mag_restore_1.sales_flat_order (
 	from osc_orders;
 
 /* Migrate order summary details */
-insert into mag_restore_1.sales_flat_order_grid (
+insert into MAGENTO_DB.sales_flat_order_grid (
 		entity_id,
 		increment_id,
 		status,
@@ -597,7 +597,7 @@ insert into mag_restore_1.sales_flat_order_grid (
 	from osc_orders;
 
 /* Migrate order payment details */
-insert into mag_restore_1.sales_flat_order_payment (
+insert into MAGENTO_DB.sales_flat_order_payment (
 		parent_id,
 		base_amount_ordered,
 		amount_ordered,
@@ -627,14 +627,14 @@ insert into mag_restore_1.sales_flat_order_payment (
 	from osc_order_payments;
 
 set sql_safe_updates = 0;
-update mag_restore_1.sales_flat_order sfo, osc_order_payments payments
+update MAGENTO_DB.sales_flat_order sfo, osc_order_payments payments
 	set sfo.base_total_paid = payments.transaction_amount,
 		sfo.total_paid = payments.transaction_amount
 	where sfo.entity_id = payments.orders_id and payments.transaction_type = 'CHARGE';
 set sql_safe_updates = 1;
 
 /* Migrate order history */
-insert into mag_restore_1.sales_flat_order_status_history (
+insert into MAGENTO_DB.sales_flat_order_status_history (
 		parent_id,
 		entity_id,
 		comment,
@@ -652,7 +652,7 @@ insert into mag_restore_1.sales_flat_order_status_history (
 	from osc_order_history;
 
 /* Migrate order shipping addresses */
-insert into mag_restore_1.sales_flat_order_address (
+insert into MAGENTO_DB.sales_flat_order_address (
 		lastname,
 		company,
 		street,
@@ -676,7 +676,7 @@ insert into mag_restore_1.sales_flat_order_address (
 	from osc_orders;
 
 /* Migrate order billing addresses */
-insert into mag_restore_1.sales_flat_order_address (
+insert into MAGENTO_DB.sales_flat_order_address (
 		lastname,
 		company,
 		street,
@@ -700,7 +700,7 @@ insert into mag_restore_1.sales_flat_order_address (
 	from osc_orders;
 
 /* Migrate order products */
-insert into mag_restore_1.sales_flat_order_item (
+insert into MAGENTO_DB.sales_flat_order_item (
 		order_id,
 		item_id,
 		name,
@@ -737,9 +737,9 @@ insert into mag_restore_1.sales_flat_order_item (
 		products_price,
 		products_price,
 		1
-	from theretrofitsource_osc22.orders_products;
+	from OSC_DB.orders_products;
 
-insert into mag_restore_1.sales_flat_order_item (
+insert into MAGENTO_DB.sales_flat_order_item (
 		order_id,
 		parent_item_id,
 		name,
@@ -768,10 +768,10 @@ insert into mag_restore_1.sales_flat_order_item (
 			'";}";}'),
 		0,
 		1
-	from theretrofitsource_osc22.orders_products_attributes;
+	from OSC_DB.orders_products_attributes;
 
 /* Create new rating */
-insert into mag_restore_1.rating (
+insert into MAGENTO_DB.rating (
 		rating_code,
 		entity_id,
 		position)
@@ -780,7 +780,7 @@ insert into mag_restore_1.rating (
 		0;
 
 set @rating_id = LAST_INSERT_ID();
-insert into mag_restore_1.rating_option (
+insert into MAGENTO_DB.rating_option (
 		rating_id,
 		code,
 		value,
@@ -801,13 +801,13 @@ create temporary table osc_reviews as (
 		r.date_added,
 		rd.reviews_text,
 		ro.option_id
-	from theretrofitsource_osc22.reviews as r
-		join theretrofitsource_osc22.reviews_description as rd
+	from OSC_DB.reviews as r
+		join OSC_DB.reviews_description as rd
 			on r.reviews_id = rd.reviews_id
-		join mag_restore_1.rating_option as ro
+		join MAGENTO_DB.rating_option as ro
 			on r.reviews_rating = ro.value and ro.rating_id = @rating_id);
 
-insert into mag_restore_1.review (
+insert into MAGENTO_DB.review (
 		review_id,
 		created_at,
 		entity_pk_value,
@@ -820,7 +820,7 @@ insert into mag_restore_1.review (
 		1
 	from osc_reviews;
 
-insert into mag_restore_1.rating_option_vote (
+insert into MAGENTO_DB.rating_option_vote (
 		customer_id,
 		option_id,
 		review_id,
@@ -835,7 +835,7 @@ insert into mag_restore_1.rating_option_vote (
 		products_id
 	from osc_reviews;
 
-insert into mag_restore_1.review_detail (
+insert into MAGENTO_DB.review_detail (
 		review_id,
 		store_id,
 		detail,
@@ -848,14 +848,14 @@ insert into mag_restore_1.review_detail (
 		customers_id
 	from osc_reviews;
 
-insert into mag_restore_1.review_store (
+insert into MAGENTO_DB.review_store (
 		review_id,
 		store_id)
 	select reviews_id,
 		0
 	from osc_reviews;
 
-insert into mag_restore_1.review_store (
+insert into MAGENTO_DB.review_store (
 		review_id,
 		store_id)
 	select reviews_id,
@@ -868,21 +868,21 @@ create temporary table mag_products as (
 select cpev.value as name,
 		cpev.entity_id,
 		cpe.sku
-	from mag_restore_1.catalog_product_entity_varchar as cpev
-		left join mag_restore_1.catalog_product_entity as cpe
+	from MAGENTO_DB.catalog_product_entity_varchar as cpev
+		left join MAGENTO_DB.catalog_product_entity as cpe
 			on cpev.entity_id = cpe.entity_id
 	where cpev.attribute_id = 71 and cpe.attribute_set_id != @legacy_attr_set_id);
 
 
-drop table if exists mag_restore_1.migration_record;
-create table mag_restore_1.migration_record (
+drop table if exists MAGENTO_DB.migration_record;
+create table MAGENTO_DB.migration_record (
 	legacy_id int,
 	legacy_sku varchar(255),
 	legacy_name varchar(255),
 	mag_id int,
 	mag_sku varchar(255),
 	mag_name varchar(255));
-insert into mag_restore_1.migration_record (
+insert into MAGENTO_DB.migration_record (
 		legacy_id,
 		legacy_sku,
 		legacy_name,
@@ -900,5 +900,3 @@ insert into mag_restore_1.migration_record (
 		left join mag_products as mp
 			on op.products_name = mp.name
 		where op.products_model is not null and op.products_model != '';
-
-select * from mag_restore_1.migration_record;
